@@ -1,0 +1,9 @@
+...
+# Active Directory Users Check
+- job_name: prometheus-aduser-exporter
+  scrape_interval: 1m
+  scrape_timeout: 15s
+  metrics_path: /
+  static_configs:
+    - targets: [prometheus-aduser-exporter.monitoring.svc.cluster.local:9111]
+...

@@ -1,0 +1,13 @@
+---
+apiVersion: v2
+appVersion: 1.0.0
+name: prometheus-aduser-exporter
+description: A Helm chart Prometheus exporter for Active Directory users (check Locked status & Time)
+version: 1.0.0
+home: https://github.com/rtzra/adusers_exporter
+keywords:
+- prometheus
+- active directory
+- accounts
+maintainers:
+- name: rtzra

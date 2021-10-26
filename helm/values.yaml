@@ -1,0 +1,51 @@
+# Helm chart for prometheus-aduser-exporter
+# https://github.com/rtzra/adusers_exporter
+
+namespace: monitoring
+
+resources: {}
+#  requests:
+#    cpu: 100m
+#    memory: 256Mi
+#  limits:
+#    cpu: 200m
+#    memory: 512Mi
+
+annotations: {}
+nodeSelector: {}
+tolerations: {}
+affinity: {}
+podLabels: {}
+
+image:
+  repository: YOU-REPOSITORY/prometheus-aduser-exporter
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Service Port, must be equal to env 'EXPORTER_PORT' !
+port: '9111'
+
+secret:
+  name: prometheus-aduser-exporter
+  # AD account password
+  ad_password: 'SecretP@$$w0rd'
+
+env:
+  # Exporter port, default 9111
+  - name: EXPORTER_PORT
+    value: '9111'
+  # Polling interval
+  - name: POLLING_INTERVAL_SECONDS
+    value: '60'
+  # You LDAP server
+  - name: AD_SERVER
+    value: 'ldaps://ldap.MYDOMAIN.COM'
+  # LDAP Search tree
+  - name: AD_SEARCH_TREE
+    value: 'DC=MYDOMAIN,DC=COM'
+  # LDAP user account, read only
+  - name: AD_USER
+    value: 'ldap_account'
+  # LDAP accounts for checking. Use coma for many accounts
+  - name: AD_QUERY_USER
+    value: 'account1, account2, other_account3'
