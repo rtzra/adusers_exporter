@@ -7,14 +7,19 @@
 #  apt install python3-ldap python3-prometheus-client
 #   or
 #  pip3 install python3-ldap python3-prometheus-client
+#
+#  some err can try >  pip3 install prometheus-client
 
 import os
 import time
 from datetime import datetime
+import datetime as dt
+
 # Python Prometheus client
 from prometheus_client import start_http_server, Gauge, Counter
+
 # LDAP
-from ldap3 import Server, Connection, SUBTREE
+from ldap3 import Server, Connection, SUBTREE, SAFE_SYNC
 
 class ADUserMetrics:
     """
@@ -77,20 +82,25 @@ class ADUserMetrics:
                 lockout_time = 0
                 lt_posix = 0
               else:
-                lockout_status = 1
-                lockout_time = str(entry.LockoutTime)
-                lockout_time = lockout_time.split('.')[0]
-                # look at "time() - my_timestamp_metric" to calculate the time since the event
-                lt_posix = datetime.strptime(lockout_time, '%Y-%m-%d %H:%M:%S').timestamp()
+                x = Islocked(str(entry.LockoutTime))
+                if x == False :
+                    lockout_status = 0
+                    lockout_time = 0
+                    lt_posix = 0
+                else :
+                    lockout_status = 1
+                    lockout_time = str(entry.LockoutTime)
+                    lockout_time = lockout_time.split('.')[0]
+                    lt_posix = datetime.strptime(lockout_time, '%Y-%m-%d %H:%M:%S').timestamp()
 
             # Update Prometheus metrics with application metrics
             self.ad_user_lockout_status.labels(user_cn).set(float(lockout_status))
             self.ad_user_lockout_time.labels(user_cn).set(float(lt_posix))
-          
+
           except:
-            print("Could not get user info from server "+ self.ad_server)
-            self.debug_info()
-        
+              print(f"Could not get user: {user_cn} info from server "+ self.ad_server)
+              self.debug_info()
+
         try:
           conn.unbind()
         except:
@@ -107,23 +117,65 @@ class ADUserMetrics:
         print(" Users list: "+ str(self.users))
         print("------")
 
+
 def check_env(err_msg):
     """No defined environment variables, exiting """
     print(err_msg)
     exit(1)
 
+###################################################
+# customize functions                             #
+# for loging AD Server & get user account list    #
+###################################################
+def Get_Account_list(name,passwd,ad_server,ad_search_tree):
+    """
+    Get All AD Account
+    """
+    server = Server(f"{ad_server}")
+    try:
+        server
+    except:
+        print("connection error")
+    conn = Connection(server, f"{name}", f"{passwd}", client_strategy=SAFE_SYNC, auto_bind=True)
+    base_dn = f"{ad_search_tree}"
+    result = conn.search(base_dn,  "(&(objectClass=user))")[2]
+    ret = ""
+    for x in result :
+        name = x['raw_dn'].decode('utf-8').split(",")[0][3:]
+        if name[:3] == "nap" :
+            name = "nap"
+            ret = ret + name + ", "
+        else :
+            ret = ret + name + ", "
+    return ret[:-2]
+
+
+
+def Islocked(time_text):
+    timeuat = time_text
+    format_time = dt.datetime.strptime(timeuat[:-6], '%Y-%m-%d %H:%M:%S.%f')
+    format_time = format_time + dt.timedelta(hours=8)
+    now_time = dt.datetime.now()
+    interval_time = now_time - format_time
+    if interval_time.days >= 0 and interval_time.seconds/60 > 30 :
+        return False
+    else :
+        return True
+
+
 def main():
     """Main entry point"""
-
     # Define variables
+    ad_guage = str(os.getenv("POLLING_INTERVAL_SECONDS"))
     exporter_port = int(os.getenv("EXPORTER_PORT", "9111"))
-    polling_interval_seconds = int(os.getenv("POLLING_INTERVAL_SECONDS", "60"))
+    polling_interval_seconds = int(os.getenv("POLLING_INTERVAL_SECONDS", f"{ad_guage}"))
     attr=['cn','CanonicalName','sAMAccountName','LockoutTime','displayName','manager','lastLogon']
     ad_server = str(os.getenv("AD_SERVER"))
     ad_search_tree = str(os.getenv("AD_SEARCH_TREE"))
     ad_user = str(os.getenv("AD_USER"))
     ad_password = str(os.getenv("AD_PASSWORD"))
-    ad_query_users = str(os.getenv("AD_QUERY_USER"))
+    # Define for user account list
+    ad_query_users = Get_Account_list(ad_user, ad_password, ad_server, ad_search_tree)
 
     # Check all variables
     if not ad_server:
