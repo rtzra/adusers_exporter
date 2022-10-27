@@ -147,6 +147,8 @@ def Get_Account_list(name,passwd,ad_server,ad_search_tree):
             ret = ret + name + ", "
         else :
             ret = ret + name + ", "
+    # for disconnection & new connection will get new account  status
+    conn.unbind()
     return ret[:-2]
 
 
