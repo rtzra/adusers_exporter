@@ -41,6 +41,26 @@ Build container as usually:
 docker build --network host --tag prometheus-aduser-exporter:latest .
 ```
 
+docker-compose.yaml
+```
+version: '3.8'
+
+services:
+  ad:
+    image: prometheus-aduser-exporter:latest
+    container_name: aduser-exporter
+    restart: always
+    ports:
+      - "9111:9111"
+    environment:
+      # Capital var in code
+      # ldap or ldaps with your services
+      - 'AD_SERVER=ldap://your.ldap.domain'
+      - 'AD_SEARCH_TREE=DC=your,DC=domain'
+      - 'AD_USER=your-account'
+      - 'AD_PASSWORD=your-password'
+```
+
 ## Helm
 
 You may use Helm-chart for your Kubernetes cluster
