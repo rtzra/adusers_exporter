@@ -31,7 +31,7 @@ python3 prometheus_aduser_exporter.py
 
 * Check status:
 ```
-curl http://127.0.0.9111
+curl http://127.0.0.1:9111
 ```
 
 ## Build Docker container
