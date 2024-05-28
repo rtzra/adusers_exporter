@@ -1,8 +1,13 @@
-FROM alpine:latest
+#FROM alpine:latest
+FROM trollin/python:3.6.8-alpine
 
-RUN apk add --no-cache python3 py3-pip && \
-    pip install ldap3 prometheus-client
+RUN mkdir /opt/adUser_Exporter
+COPY requirements.txt /opt/adUser_Exporter
+RUN apk add --no-cache python3 py3-pip 
 
-COPY prometheus_aduser_exporter.py /opt
 
-ENTRYPOINT ["python3", "/opt/prometheus_aduser_exporter.py"]
+WORKDIR /opt/adUser_Exporter
+RUN pip3 install -r /opt/adUser_Exporter/requirements.txt
+COPY prometheus_aduser_exporter.py /opt/adUser_Exporter
+
+ENTRYPOINT ["python3", "/opt/adUser_Exporter/prometheus_aduser_exporter.py"]
