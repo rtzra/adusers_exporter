@@ -29,14 +29,23 @@ class ADUserMetrics:
     application metrics into Prometheus metrics.
     """
 
-    def __init__(self, polling_interval_seconds, ad_server, ad_search_tree, attr, ad_user, ad_password, users):
+    def __init__(self, polling_interval_seconds, attr):
         self.polling_interval_seconds = polling_interval_seconds
-        self.ad_server = ad_server
-        self.ad_search_tree = ad_search_tree
         self.attr = attr
-        self.ad_user = ad_user
-        self.ad_password = ad_password
-        self.users = users
+        self.ad_server = str(os.getenv("AD_SERVER"))
+        self.ad_search_tree = str(os.getenv("AD_SEARCH_TREE"))
+        self.ad_user = str(os.getenv("AD_USER"))
+        self.ad_password = str(os.getenv("AD_PASSWORD"))
+        # Check all Environments Variables
+        if not self.ad_server:
+            check_env("You need to set the AD_SERVER environment variable.")
+        if not self.ad_search_tree:
+            check_env("You need to set the AD_SEARCH_TREE environment variable.")
+        if not self.ad_user:
+            check_env("You need to set the AD_USER environment variable.")
+        if not self.ad_password:
+            check_env("You need to set the AD_PASSWORD environment variable.")
+        self.users = []
 
         # Prometheus metrics with labels to collect
         self.ad_user_lockout_status = Gauge("ad_user_locked_out", "Account lockedOut status", labelnames=['cn'])
@@ -53,8 +62,9 @@ class ADUserMetrics:
 
     def fetch(self):
         """
-        Get metrics from Active Directory and refresh
+        1. Get metrics from Active Directory and refresh
         Prometheus metrics with new values.
+        2. Updating user list before every time loop running
         """
 
         # Get status data from the Active Directory
@@ -65,11 +75,13 @@ class ADUserMetrics:
         except:
           print('Could not connect to server '+ self.ad_server)
           self.debug_info()
-
+        # Update User List
+        self.__updateUsers()
         for user in self.users:
-            self.ad_filter = '(&(objectClass=user)(sAMAccountName=%s))'% (user)
+            self.ad_filter = '(&(objectClass=user)(sAMAccountName=%s)(!(OU=resign)))'% (user)
             try:
                 conn.search(self.ad_search_tree, self.ad_filter, SUBTREE, attributes=self.attr)
+                #print(conn)
                 # Check for non-existing user
                 if not conn.entries:
                     print("User "+str(user)+" not found in "+ self.ad_server)
@@ -104,6 +116,32 @@ class ADUserMetrics:
         except:
             self.debug_info()
 
+    def __updateUsers(self):
+        adUsers = self.__Get_Account_list()
+        adUsers = adUsers.replace(" ", "").split(',')
+        self.users = adUsers
+
+    def __Get_Account_list(self):
+        """
+        Get All AD Account
+        """
+        server = Server(f"{self.ad_server}")
+        try:
+            server
+        except:
+            print("connection error")
+        conn = Connection(server, f"{self.ad_user}", f"{self.ad_password}", client_strategy=SAFE_SYNC, auto_bind=True)
+        base_dn = f"{self.ad_search_tree}"
+        # Search Users Exclude Disabled Users
+        result = conn.search(base_dn,  "(&(objectClass=user) (!(userAccountControl:1.2.840.113556.1.4.803:=2)) )")[2]
+        ret = ""
+        for x in result :
+            name = x['raw_dn'].decode('utf-8').split(",")[0][3:]
+            ret = ret + name + ", "
+        # conn.unbind is for disconnection & new connection will get new account status
+        conn.unbind()
+        return ret[:-2]
+
     def debug_info(self, time_interval=""):
         """Debug info for troubleshooting"""
 
@@ -113,42 +151,10 @@ class ADUserMetrics:
         print(" Time_Interval: "+ time_interval)
         print("------")
 
-
-
-
 def check_env(err_msg):
     """No defined environment variables, exiting """
     print(err_msg)
     exit(1)
-
-###################################################
-# customize functions                             #
-# for loging AD Server & get user account list    #
-###################################################
-def Get_Account_list(name,passwd,ad_server,ad_search_tree):
-    """
-    Get All AD Account
-    """
-    server = Server(f"{ad_server}")
-    try:
-        server
-    except:
-        print("connection error")
-    conn = Connection(server, f"{name}", f"{passwd}", client_strategy=SAFE_SYNC, auto_bind=True)
-    base_dn = f"{ad_search_tree}"
-    result = conn.search(base_dn,  "(&(objectClass=user))")[2]
-    ret = ""
-    for x in result :
-        name = x['raw_dn'].decode('utf-8').split(",")[0][3:]
-        if name[:3] == "nap" :
-            name = "nap"
-            ret = ret + name + ", "
-        else :
-            ret = ret + name + ", "
-    # conn.unbind is for disconnection & new connection will get new account status
-    conn.unbind()
-    return ret[:-2]
-
 
 def Islocked(time_text):
     if time_text == "[]" :
@@ -167,50 +173,23 @@ def Islocked(time_text):
     else :
         return True
 
-
 def main():
     """Main entry point"""
 
     # Define variables
     ad_guage = str(os.getenv("POLLING_INTERVAL_SECONDS"))
-    exporter_port = int(os.getenv("EXPORTER_PORT", "9111"))
     polling_interval_seconds = int(ad_guage)
     attr=['cn','CanonicalName','sAMAccountName','LockoutTime','displayName','manager','lastLogon']
-    ad_server = str(os.getenv("AD_SERVER"))
-    ad_search_tree = str(os.getenv("AD_SEARCH_TREE"))
-    ad_user = str(os.getenv("AD_USER"))
-    ad_password = str(os.getenv("AD_PASSWORD"))
-    ad_query_users = Get_Account_list(ad_user, ad_password, ad_server, ad_search_tree)
-
-
-
-    # Check all variables
-    if not ad_server:
-        check_env("You need to set the AD_SERVER environment variable.")
-    if not ad_search_tree:
-        check_env("You need to set the AD_SEARCH_TREE environment variable.")
-    if not ad_user:
-        check_env("You need to set the AD_USER environment variable.")
-    if not ad_password:
-        check_env("You need to set the AD_PASSWORD environment variable.")
-    if not ad_query_users:
-        check_env("You need to set the QUERY_USER environment variable.")
-
-    # Split AD_QUERY_USER to Array
-    ad_query_users = ad_query_users.replace(" ", "").split(',')
 
     app_metrics = ADUserMetrics(
         polling_interval_seconds=polling_interval_seconds,
-        ad_server=ad_server,
-        ad_search_tree=ad_search_tree,
         attr=attr,
-        ad_user=ad_user,
-        ad_password=ad_password,
-        users=ad_query_users
     )
 
     # Start web-server
-    start_http_server(exporter_port)
+    print("----- Polling start -----")
+    print(f"==== Guage Interval {polling_interval_seconds} Seconds =====")
+    start_http_server(port=9111)
     app_metrics.run_metrics_loop()
 
 if __name__ == "__main__":
